@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}
+    <title>Research PandasAI</title>
+{% endblock title %}
+
+{% block style %}
+<style>
+    /* Center the loader */
+    .loader-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        position: fixed;
+        width: 100%;
+        top: 0;
+        left: 0;
+    }
+
+    /* Loader styles */
+    .loader {
+        border: 5px solid #f3f3f3;
+        border-radius: 50%;
+        border-top: 5px solid #3498db;
+        width: 50px;
+        height: 50px;
+        animation: spin 2s linear infinite;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+</style>
+
+{% endblock style %}
+
+{% block body %}
+    <div class="loader-container">
+        <div class="loader"></div>
+    </div>
+{% endblock body %}
+
+{% block script %}
+    
+<script>
+    /*// Simulate loading process
+    document.addEventListener("DOMContentLoaded", function() {
+        setTimeout(function() {
+            document.querySelector('.loader-container').style.display = 'none';
+        }, 3000); // 3 seconds loading time
+    });*/
+</script>
+
+
+{% endblock script %}

@@ -1,0 +1,389 @@
+{% extends "base.html" %}
+
+{% block title %}
+    <title>Research PandasAI</title>
+{% endblock title %}
+
+{% block style %}
+<style>
+    .container{
+        display: inline-flex;
+        height: 100vh;
+    }
+    
+    .sideBox{
+        background-color: rgb(231, 226, 219);
+        width: 23vw;
+        border-radius: 1vh;
+        
+    }
+    
+    .sideNav{
+        padding: 0.5vh;
+        border-radius: 1vh;
+        display: flex;
+        justify-content: center;
+        font-size: larger;
+        font-weight: bolder;
+        
+    }
+    
+    .mainNav{
+        padding: 0.5vh;
+        border-radius: 1vh;
+        display: flex;
+        justify-content: space-around;
+        font-size: larger;
+        font-weight: bolder;
+    }
+    
+    .sideMessage{
+        
+        height: 90vh;
+        padding: 1vh;
+        display: flex;
+        flex-direction: column-reverse;
+        border-radius: 1vh;
+    }
+    
+    #prevChats{
+        height: 0.2vh;
+        background-color: gray;
+        width: 24vw;
+        border-radius: 1vh;
+    }
+    
+    .mainBox{
+        background-color: rgb(183, 158, 158);
+        width: 75vw;
+        border-radius: 1vh;
+    }
+    
+    .mainMessageBox{
+        
+        height: 85vh;
+        border-radius: 1vh;
+        background-color: rgb(183, 181, 178);
+        padding: 0vh 2vh;
+    }
+    
+    .inputBox{
+        padding: 1vh;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-radius: 1vh;
+        background-color: rgb(107, 95, 103);
+    
+    }
+    
+    #query-ip-box{
+        width: -webkit-fill-available;
+        margin: 1.5vh 4vh;
+        height: 4vh;
+        font-size: large;
+        padding: 0.5vh;
+        border-radius: 1vh;
+    }
+    
+    #submit-btn{
+        padding: 1vh 2vh;
+        font-size: larger;
+        font-weight: 900;
+        border-radius: 1vh;
+    }
+    
+    #save-btn{
+        padding: 0.5vh;
+        border-radius: 1vh;
+        background-color: lavender;
+    }
+
+    table th td{
+        border: 1px solid black;
+    }
+
+</style>
+
+{% endblock style %}
+
+{% block body %}
+<div class="container">
+    <div class="sideBox">
+        <div class="sideNav">
+            Previous Chats
+        </div>
+        <div id = "sideMessage" class="sideMessage">
+            <div id = "prevChats">
+            </div>
+        </div>
+    </div>
+
+    <div class="mainBox">
+        <div class="mainNav">Chat with Excels
+            <button id = "save-btn">Save Conversation</button>
+            <div id="select-excel-loader">{% include 'loader.html' %}</div>
+            <select id="excel-select">
+                <option value="">select excel</option>
+            </select>        
+            <form id="upload-excel-form">
+                <input type="file" id="input-excelsheet" required/>
+                <button id="upload-excel-btn" type="submit">Upload excel</button>    
+            </form>
+        </div>
+        <div class="mainMessageBox">
+            <div class="messageBox" id = "textArea">
+            </div>
+            <div id="textArea-loader">{% include 'loader.html' %}</div>
+        </div>
+        <form class="inputBox" id="query-writingform">
+            <input placeholder="Enter your query here" id="query-ip-box" />
+            <button id="submit-btn" type="submit"> > </button>
+        </form>
+    
+    </div>
+    </div>
+
+{% endblock body %}
+
+{% block script %}
+    <script>
+        var ws_chat, ws_resetstatus, ws_makeagent;
+
+
+        function isimage(path){
+            var imageExtensions = [".png", ".jpg", ".jpeg", ".gif", ".bmp"];
+            var lowercaseUrl = path.toLowerCase();
+            for (var i = 0; i < imageExtensions.length; i++) {
+                if (lowercaseUrl.endsWith(imageExtensions[i])) {
+                    return true; 
+                }
+            }
+            console.log("path is : ", path);
+            return false;         
+        }
+
+        document.getElementById("upload-excel-form").addEventListener('submit', (req, res)=>{
+            event.preventDefault();
+
+            console.log("submitting wait ..... ")
+            document.getElementById('textArea-loader').style.display = 'block';
+
+            var formData = new FormData();
+            var fileInput = document.getElementById('input-excelsheet');
+            formData.append('file', fileInput.files[0]);
+
+            fetch('http://127.0.0.1:8000/api/upload-excel', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log(data.message);
+                alert(data.message);
+                getallexcellCollections();
+                resetselectedexcel();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('File upload failed.');
+            });
+
+            document.getElementById('textArea-loader').style.display = 'none';
+
+        })
+
+        function getallexcellCollections(){
+            document.getElementById('select-excel-loader').style.display = 'block';
+            $.ajax({
+                url: '/api/getall-excel-collections',
+                method: 'GET',
+                success: function(response) {
+                    const collections = response.collections;
+                    const select = $('#excel-select');
+                    select.empty();
+                    select.append('<option value="">select excel</option>');
+                    collections.forEach(function(collection) {
+                        const option = $('<option></option>').val(collection).text(collection);
+                        select.append(option);
+                    });
+
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error fetching collections:', error);
+                }
+            });
+            document.getElementById('select-excel-loader').style.display = 'none';
+        }
+
+
+        document.addEventListener("DOMContentLoaded", (req, res)=>{
+            document.getElementById('textArea-loader').style.display = 'none';
+
+            /*=================== Web sockets connection  ================================*/
+            try{
+                ws_chat = new WebSocket('ws://127.0.0.1:8000/ws/api/chat-api/');
+                ws_chat.onopen = function(e){
+                    console.log("ws connection opened", e);
+                }
+            }catch(e){
+                alert("error in connecting websockets , "+ e.data);
+            }
+
+            try{
+                ws_makeagent = new WebSocket('ws://127.0.0.1:8000/ws/api/make-agent/');
+                ws_makeagent.onopen = function(e){
+                    console.log("makeagent websocket get connected ", e);
+                }
+            }catch(e){
+                alert("error in connecting makeagent websockets , "+ e.data);
+            }
+
+            try{
+                ws_resetstatus = new WebSocket('ws://127.0.0.1:8000/ws/api/resetstatus/');
+                ws_resetstatus.onopen = function(e){
+                    console.log("resetstatus websocket get connected ", e);
+                }
+            }catch(e){
+                alert("error in connecting resetstatus websockets , "+ e.data);
+            }
+
+            /* ============================================================================ */
+
+            $('#excel-select').on('change', function() {
+                const selectedCollection = $(this).val();
+                document.getElementById('textArea-loader').style.display = 'block';
+                if (selectedCollection) {
+                    /* ================== use websockets here now ========================= */
+                    ws_makeagent.send(selectedCollection);
+                    ws_makeagent.onmessage = function(e) {
+                        alert(e.data)
+                        document.getElementById('textArea-loader').style.display = 'none';
+                    }
+                    ws_makeagent.onerror = function(e){
+                        console.log("error while making agent ......", e);
+                        document.getElementById('textArea-loader').style.display = 'none';
+                    }
+        
+                    /* ==================================================================== */
+
+                    /*
+                    $.ajax({
+                        url: 'api/makeagent-selectedexcel',
+                        method: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({ collectionName: selectedCollection }),
+                        success: function(response) {
+                            console.log('POST request successful:', response);
+                            alert(response.data+" agent got generated");
+                            document.getElementById('textArea-loader').style.display = 'none';
+                        },
+                        error: function(xhr, status, error) {
+                            console.error('Error making POST request:', error);
+                            alert("agent failed to generate");
+                            document.getElementById('textArea-loader').style.display = 'none';
+                        }
+                    });*/
+
+
+                }
+                
+            });
+            getallexcellCollections();
+            resetselectedexcel();
+        })
+
+
+        function resetselectedexcel(){
+            /*$.ajax({
+                url: 'api/resetstatus',
+                method: 'GET',
+                success: function(response) {
+                    console.log('status reset successfull...');
+                },
+                error: function(xhr, status, error) {
+                    console.error('error in reseting the status');
+                }
+            });*/
+
+            /*=========================== use websocket api instead ======================*/
+            ws_resetstatus.send('resetstatus');
+            ws_resetstatus.onmessage = function(e) {
+                console.log("status reset successfull...");
+            }
+            ws_resetstatus.onerror = function(e){
+                console.log("error in reseting the status.... ", e);
+            }
+
+        }
+
+
+
+        document.getElementById('query-writingform').addEventListener('submit', (req, res) => {
+            event.preventDefault(); 
+
+            const textArea = document.getElementById('textArea');
+            document.getElementById('textArea-loader').style.display = 'block';
+
+            const query = document.getElementById('query-ip-box').value;
+
+            /* ==================== web sockets are used now ===========================*/
+
+            ws_chat.send(query);
+            ws_chat.onmessage = function(e) {
+                document.getElementById('textArea-loader').style.display = 'none';
+                if(e.data == 'please select the excelsheet'){
+                    alert(e.data);
+                }else{
+                    textArea.innerHTML = e.data;
+                    if (isimage(e.data)) {
+                        {% load static %}
+                        textArea.innerHTML = `<img src="${e.data}" alt="My image"><p>${e.data}</p>`;
+                    }else{
+                        textArea.innerHTML = e.data;
+                    }
+                }
+            }
+            ws_chat.onerror = function(e){
+                console.log("websocket error while sending the message ......", e);
+                document.getElementById('textArea-loader').style.display = 'none';
+            }
+
+            /*==============================================================================*/
+
+
+
+
+            /* ============================ Django REST API is used here =========================*/
+            //make the call in backend and get the answer : 
+            /*
+            var res_data = {"query": query};
+            $.ajax({
+                url: "api/chat-api",
+                type: "POST",
+                contentType: "application/json",
+                data: JSON.stringify(res_data),
+                success: function(response) {
+                    if (typeof response.data == 'string' && isimage(response.data)) {
+                        {% load static %}
+                        textArea.innerHTML = `<img src="${response.data}" alt="My image"><p>${response.data}</p>`;
+                    }else if(typeof response.data === 'string' || typeof response.data == 'number'){
+                        textArea.innerHTML = response.data;
+                    }
+                    document.getElementById('textArea-loader').style.display = 'none';
+                },
+                error: function(xhr, status, error) {
+                    console.error("Request failed with status:", status);
+                    alert(xhr.responseJSON['error']);
+                    document.getElementById('textArea-loader').style.display = 'none';
+                }
+            });*/
+            /*==========================================================================*/
+
+            
+           
+        })
+
+    </script>
+
+{% endblock script %}
